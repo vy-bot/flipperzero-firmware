@@ -9,9 +9,12 @@ enum HidDebugSubmenuIndex {
     HidSubmenuIndexKeynote,
     HidSubmenuIndexKeyboard,
     HidSubmenuIndexMedia,
+    HidSubmenuIndexReddit,
     HidSubmenuIndexTikTok,
     HidSubmenuIndexMouse,
+    HidSubmenuIndexMouseClicker,
     HidSubmenuIndexMouseJiggler,
+    HidSubmenuIndexCamera,
 };
 
 static void hid_submenu_callback(void* context, uint32_t index) {
@@ -29,12 +32,21 @@ static void hid_submenu_callback(void* context, uint32_t index) {
     } else if(index == HidSubmenuIndexMouse) {
         app->view_id = HidViewMouse;
         view_dispatcher_switch_to_view(app->view_dispatcher, HidViewMouse);
+    } else if(index == HidSubmenuIndexReddit) {
+        app->view_id = BtHidViewReddit;
+        view_dispatcher_switch_to_view(app->view_dispatcher, BtHidViewReddit);
     } else if(index == HidSubmenuIndexTikTok) {
         app->view_id = BtHidViewTikTok;
         view_dispatcher_switch_to_view(app->view_dispatcher, BtHidViewTikTok);
+    } else if(index == HidSubmenuIndexMouseClicker) {
+        app->view_id = HidViewMouseClicker;
+        view_dispatcher_switch_to_view(app->view_dispatcher, HidViewMouseClicker);
     } else if(index == HidSubmenuIndexMouseJiggler) {
         app->view_id = HidViewMouseJiggler;
         view_dispatcher_switch_to_view(app->view_dispatcher, HidViewMouseJiggler);
+    } else if(index == HidSubmenuIndexCamera) {
+        app->view_id = HidViewCamera;
+        view_dispatcher_switch_to_view(app->view_dispatcher, HidViewCamera);
     }
 }
 
@@ -53,8 +65,11 @@ static void bt_hid_connection_status_changed_callback(BtStatus status, void* con
     hid_keyboard_set_connected_status(hid->hid_keyboard, connected);
     hid_media_set_connected_status(hid->hid_media, connected);
     hid_mouse_set_connected_status(hid->hid_mouse, connected);
+    hid_mouse_clicker_set_connected_status(hid->hid_mouse_clicker, connected);
     hid_mouse_jiggler_set_connected_status(hid->hid_mouse_jiggler, connected);
+    hid_reddit_set_connected_status(hid->hid_reddit, connected);
     hid_tiktok_set_connected_status(hid->hid_tiktok, connected);
+    hid_camera_set_connected_status(hid->hid_camera, connected);
 }
 
 static void hid_dialog_callback(DialogExResult result, void* context) {
@@ -109,6 +124,12 @@ Hid* hid_alloc(HidTransport transport) {
     if(app->transport == HidTransportBle) {
         submenu_add_item(
             app->device_type_submenu,
+            "Reddit Controller",
+            HidSubmenuIndexReddit,
+            hid_submenu_callback,
+            app);
+        submenu_add_item(
+            app->device_type_submenu,
             "TikTok Controller",
             HidSubmenuIndexTikTok,
             hid_submenu_callback,
@@ -116,10 +137,18 @@ Hid* hid_alloc(HidTransport transport) {
     }
     submenu_add_item(
         app->device_type_submenu,
+        "Mouse Clicker",
+        HidSubmenuIndexMouseClicker,
+        hid_submenu_callback,
+        app);
+    submenu_add_item(
+        app->device_type_submenu,
         "Mouse Jiggler",
         HidSubmenuIndexMouseJiggler,
         hid_submenu_callback,
         app);
+    submenu_add_item(
+        app->device_type_submenu, "Camera", HidSubmenuIndexCamera, hid_submenu_callback, app);
     view_set_previous_callback(submenu_get_view(app->device_type_submenu), hid_exit);
     view_dispatcher_add_view(
         app->view_dispatcher, HidViewSubmenu, submenu_get_view(app->device_type_submenu));
@@ -160,6 +189,12 @@ Hid* hid_app_alloc_view(void* context) {
     view_dispatcher_add_view(
         app->view_dispatcher, HidViewMedia, hid_media_get_view(app->hid_media));
 
+    // Reddit view
+    app->hid_reddit = hid_reddit_alloc(app);
+    view_set_previous_callback(hid_reddit_get_view(app->hid_reddit), hid_exit_confirm_view);
+    view_dispatcher_add_view(
+        app->view_dispatcher, BtHidViewReddit, hid_reddit_get_view(app->hid_reddit));
+
     // TikTok view
     app->hid_tiktok = hid_tiktok_alloc(app);
     view_set_previous_callback(hid_tiktok_get_view(app->hid_tiktok), hid_exit_confirm_view);
@@ -172,6 +207,15 @@ Hid* hid_app_alloc_view(void* context) {
     view_dispatcher_add_view(
         app->view_dispatcher, HidViewMouse, hid_mouse_get_view(app->hid_mouse));
 
+    // Mouse clicker view
+    app->hid_mouse_clicker = hid_mouse_clicker_alloc(app);
+    view_set_previous_callback(
+        hid_mouse_clicker_get_view(app->hid_mouse_clicker), hid_exit_confirm_view);
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        HidViewMouseClicker,
+        hid_mouse_clicker_get_view(app->hid_mouse_clicker));
+
     // Mouse jiggler view
     app->hid_mouse_jiggler = hid_mouse_jiggler_alloc(app);
     view_set_previous_callback(
@@ -180,6 +224,12 @@ Hid* hid_app_alloc_view(void* context) {
         app->view_dispatcher,
         HidViewMouseJiggler,
         hid_mouse_jiggler_get_view(app->hid_mouse_jiggler));
+
+    // Camera view
+    app->hid_camera = hid_camera_alloc(app);
+    view_set_previous_callback(hid_camera_get_view(app->hid_camera), hid_exit_confirm_view);
+    view_dispatcher_add_view(
+        app->view_dispatcher, HidViewCamera, hid_camera_get_view(app->hid_camera));
 
     return app;
 }
@@ -205,10 +255,16 @@ void hid_free(Hid* app) {
     hid_media_free(app->hid_media);
     view_dispatcher_remove_view(app->view_dispatcher, HidViewMouse);
     hid_mouse_free(app->hid_mouse);
+    view_dispatcher_remove_view(app->view_dispatcher, HidViewMouseClicker);
+    hid_mouse_clicker_free(app->hid_mouse_clicker);
     view_dispatcher_remove_view(app->view_dispatcher, HidViewMouseJiggler);
     hid_mouse_jiggler_free(app->hid_mouse_jiggler);
+    view_dispatcher_remove_view(app->view_dispatcher, BtHidViewReddit);
+    hid_reddit_free(app->hid_reddit);
     view_dispatcher_remove_view(app->view_dispatcher, BtHidViewTikTok);
     hid_tiktok_free(app->hid_tiktok);
+    view_dispatcher_remove_view(app->view_dispatcher, HidViewCamera);
+    hid_camera_free(app->hid_camera);
     view_dispatcher_free(app->view_dispatcher);
 
     // Close records
